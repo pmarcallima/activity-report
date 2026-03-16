@@ -9,9 +9,15 @@ export function getAzureCliExecutable(): string {
 
 export async function runAzureCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
   const executable = getAzureCliExecutable();
-  const isWindows = process.platform === "win32";
+
+  if (process.platform === "win32") {
+    const command = [executable, ...args].join(" ");
+    return execFileAsync("cmd", ["/c", command], {
+      maxBuffer: 1024 * 1024
+    });
+  }
+
   return execFileAsync(executable, args, {
-    shell: isWindows,
     maxBuffer: 1024 * 1024
   });
 }
