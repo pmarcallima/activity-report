@@ -18,6 +18,16 @@ export async function resolveSprint(
     return iteration;
   }
 
+  if (resolution.mode === "date-range") {
+    return {
+      id: "",
+      name: `${resolution.from} to ${resolution.to}`,
+      path: "",
+      startDate: resolution.from,
+      finishDate: resolution.to
+    };
+  }
+
   const now = new Date().toISOString();
   const current = iterations.find((iteration) => {
     const start = iteration.startDate;

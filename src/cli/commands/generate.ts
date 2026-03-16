@@ -38,7 +38,7 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
     return;
   }
 
-  const sprintSelection = resolveSprintSelection(options.sprint);
+  const sprintSelection = resolveSprintSelection(options);
   const result = await generateSingleSprintReport({ config, token, sprintSelection, options });
 
   if (options.debug ?? config.debug.enabledByDefault) {
@@ -66,7 +66,19 @@ async function generateLastSprintsCommand({
 
   logger.info("Resolving sprint history...");
   const allIterations = await getIterations(config, token);
-  const currentSprint = await resolveSprint(config, token, { mode: "current" });
+  const sortedIterations = allIterations
+    .filter((i) => i.startDate && i.finishDate)
+    .sort((a, b) => new Date(b.startDate ?? 0).getTime() - new Date(a.startDate ?? 0).getTime());
+
+  const currentSprint = sortedIterations.find((iteration) => {
+    const now = new Date().toISOString();
+    return iteration.startDate! <= now && iteration.finishDate! >= now;
+  }) ?? sortedIterations[0];
+
+  if (!currentSprint) {
+    throw new Error("No sprint iterations found in Azure.");
+  }
+
   const selectedSprints = selectLastSprints(allIterations, currentSprint, sprintCount);
 
   // Generate folder name: sprints-12-11-10
@@ -179,12 +191,16 @@ async function generateSingleSprintReport({
   };
 }
 
-function resolveSprintSelection(rawSprint?: string): SprintSelection {
-  if (!rawSprint || rawSprint === "current") {
+function resolveSprintSelection(options: GenerateOptions): SprintSelection {
+  if (options.from && options.to) {
+    return { mode: "date-range", from: options.from, to: options.to };
+  }
+
+  if (!options.sprint || options.sprint === "current") {
     return { mode: "current" };
   }
 
-  return { mode: "named", sprintName: rawSprint };
+  return { mode: "named", sprintName: options.sprint };
 }
 
 function buildSprintFolderName(sprintName: string): string {

@@ -7,6 +7,10 @@ export async function getSprintWorkItemIds(
   token: string,
   sprint: AzureIteration
 ): Promise<number[]> {
+  if (!sprint.id) {
+    return [];
+  }
+
   const client = new AzureClient(config, token);
   const wiql = {
     query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.IterationId] = ${sprint.id}`

@@ -58,13 +58,31 @@ The `init` command will ask for:
 ## Usage
 
 ```bash
+# Generate report for current sprint (default)
 activity-report generate
+
+# Generate report for a specific sprint
 activity-report generate --sprint current
-activity-report generate --sprint "Features Sprint 12"
-activity-report generate --last-sprints 2
+activity-report generate --sprint "Sprint 42"
+
+# Generate report for a date range (no sprint required)
 activity-report generate --from 2026-03-01 --to 2026-03-13
+
+# Generate combined report for last N sprints
+activity-report generate --last-sprints 2
+
+# With debug output
 activity-report generate --debug
 ```
+
+### Date Range Mode
+
+When using `--from` and `--to` without `--sprint`, the report generates in date-range mode:
+- No sprint work items are loaded from Azure
+- Only commits within the date range are included
+- Report is saved to a date-based folder (e.g., `reports/2026-03-01-to-2026-03-13/report.md`)
+
+This is useful when you need a report for dates that don't align with sprints, or when you just want commit activity without sprint backlog items.
 
 ## Configuration
 
@@ -146,5 +164,7 @@ activity-report generate --last-sprints 2
 - Adds generated summaries for each sprint, story, and unlinked repo section
 - Keeps unmatched commits in `Unlinked Technical Work` when `includeUnlinkedTechnicalWork` is enabled
 - Can generate a combined report for the last N sprints with `--last-sprints`
+- When no current sprint is active, `--last-sprints` falls back to the most recent sprint
+- Date-range mode (`--from` + `--to` without `--sprint`) skips Azure work item loading
 - Writes a Markdown report to `outputDir`
 - Writes debug JSON only when `--debug` is enabled

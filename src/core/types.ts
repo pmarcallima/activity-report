@@ -13,7 +13,8 @@ export type GenerateOptions = {
 
 export type SprintSelection =
   | { mode: "current" }
-  | { mode: "named"; sprintName: string };
+  | { mode: "named"; sprintName: string }
+  | { mode: "date-range"; from: string; to: string };
 
 export type RepoInfo = {
   name: string;
