@@ -12,7 +12,6 @@ import type {
   MultiSprintReport,
   SprintSelection
 } from "../../core/types.js";
-import { writeDebugFiles } from "../../debug/write-debug-files.js";
 import { buildReportModel } from "../../domain/report/build-report-model.js";
 import { renderMultiSprintMarkdown } from "../../domain/report/render-multi-sprint-markdown.js";
 import { renderMarkdown } from "../../domain/report/render-markdown.js";
@@ -40,12 +39,6 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
 
   const sprintSelection = resolveSprintSelection(options);
   const result = await generateSingleSprintReport({ config, token, sprintSelection, options });
-
-  if (options.debug ?? config.debug.enabledByDefault) {
-    const debugDir = path.join(path.dirname(result.outputPath), "debug");
-    await writeDebugFiles(debugDir, result);
-    logger.info(`Debug files written to ${debugDir}`);
-  }
 
   logger.info(`Report written to ${result.outputPath}`);
 }
@@ -113,12 +106,6 @@ async function generateLastSprintsCommand({
   const combinedPath = path.join(outputBase, "report.md");
   await mkdir(path.dirname(combinedPath), { recursive: true });
   await writeFile(combinedPath, renderMultiSprintMarkdown(combined), "utf8");
-
-  if (options.debug ?? config.debug.enabledByDefault) {
-    const debugDir = path.join(outputBase, "debug");
-    await writeDebugFiles(debugDir, { ...combined, outputPath: combinedPath } as GeneratePipelineResult);
-    logger.info(`Debug files written to ${debugDir}`);
-  }
 
   logger.info(`Combined report written to ${combinedPath}`);
 }
