@@ -48,6 +48,14 @@ export async function resolveSprint(
   });
 
   if (!current) {
+    const sortedByDate = iterations
+      .filter((i) => i.startDate && i.finishDate)
+      .sort((a, b) => new Date(b.startDate!).getTime() - new Date(a.startDate!).getTime());
+    
+    if (sortedByDate.length > 0) {
+      return sortedByDate[0];
+    }
+
     const nowDate = new Date().toISOString().slice(0, 10);
     const withDates = iterations.filter((i) => i.startDate && i.finishDate);
     const withoutDates = iterations.length - withDates.length;
