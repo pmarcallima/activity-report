@@ -10,6 +10,7 @@ import type {
   GenerateOptions,
   GeneratePipelineResult,
   MultiSprintReport,
+  RepoInfo,
   SprintSelection
 } from "../../core/types.js";
 import { buildReportModel } from "../../domain/report/build-report-model.js";
@@ -23,6 +24,8 @@ import { getWorkItemDetails } from "../../infra/azure/get-work-item-details.js";
 import { collectCommits } from "../../infra/git/collect-commits.js";
 import { discoverRepos } from "../../infra/git/discover-repos.js";
 import { correlateCommitsToItems } from "../../domain/correlation/correlate-commits-to-items.js";
+import { withSpinner, isTTY } from "../progress.js";
+import { selectSprintInteractive } from "../sprint-selector.js";
 
 export async function generateCommand(options: GenerateOptions): Promise<void> {
   if ((options.from && !options.to) || (!options.from && options.to)) {
@@ -37,10 +40,31 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
     return;
   }
 
-  const sprintSelection = resolveSprintSelection(options);
+  const sprintSelection = await resolveSprintSelectionInteractive(options, config);
   const result = await generateSingleSprintReport({ config, token, sprintSelection, options });
 
   logger.info(`Report written to ${result.outputPath}`);
+}
+
+async function resolveSprintSelectionInteractive(options: GenerateOptions, config: AppConfig): Promise<SprintSelection> {
+  // If user provided specific sprint or date range, use that
+  if (options.from && options.to) {
+    return { mode: "date-range", from: options.from, to: options.to };
+  }
+
+  if (options.sprint && options.sprint !== "current") {
+    return { mode: "named", sprintName: options.sprint };
+  }
+
+  // If no sprint specified, check if we should use interactive mode
+  const useInteractive = isTTY() && process.stdin.isTTY;
+
+  if (useInteractive) {
+    return await selectSprintInteractive(config);
+  }
+
+  // Fallback to current sprint for non-interactive mode
+  return { mode: "current" };
 }
 
 async function generateLastSprintsCommand({
@@ -57,8 +81,10 @@ async function generateLastSprintsCommand({
     throw new Error("--last-sprints must be a positive integer.");
   }
 
-  logger.info("Resolving sprint history...");
-  const allIterations = await getIterations(config, token);
+  const allIterations = await withSpinner("Resolving sprint history...", async () => {
+    return getIterations(config, token);
+  });
+
   const sortedIterations = allIterations
     .filter((i) => i.startDate && i.finishDate)
     .sort((a, b) => new Date(b.startDate ?? 0).getTime() - new Date(a.startDate ?? 0).getTime());
@@ -122,8 +148,9 @@ async function generateSingleSprintReport({
   options: GenerateOptions;
 }): Promise<GeneratePipelineResult> {
 
-  logger.info("Resolving sprint...");
-  const sprint = await resolveSprint(config, token, sprintSelection);
+  const sprint = await withSpinner("Resolving sprint...", async () => {
+    return resolveSprint(config, token, sprintSelection);
+  });
 
   const from = options.from ?? sprint.startDate?.slice(0, 10);
   const to = options.to ?? sprint.finishDate?.slice(0, 10);
@@ -132,15 +159,22 @@ async function generateSingleSprintReport({
     throw new Error("Could not determine report date range. Provide --from and --to or use a sprint with start/end dates.");
   }
 
-  logger.info("Discovering repositories...");
-  const repos = await discoverRepos(config.repoRoots);
+  const repos = await withSpinner("Discovering repositories...", async () => {
+    return discoverRepos(config.repoRoots);
+  });
 
+  logger.info(`Found ${repos.length} repositories`);
   logger.info(`Collecting commits from ${repos.length} repositories...`);
+
   const commitGroups = await Promise.all(repos.map((repo) => collectCommits({ repo, config, from, to })));
   const commits = commitGroups.flat();
 
-  logger.info("Loading Azure sprint work items...");
-  const workItemIds = await getSprintWorkItemIds(config, token, sprint);
+  logger.info(`Collected ${commits.length} commits`);
+
+  const workItemIds = await withSpinner("Loading Azure sprint work items...", async () => {
+    return getSprintWorkItemIds(config, token, sprint);
+  });
+
   const referencedWorkItemIds = commits
     .map((commit) => commit.branchReference?.itemId ?? commit.messageItemId)
     .filter((itemId): itemId is number => Number.isInteger(itemId));
@@ -150,8 +184,10 @@ async function generateSingleSprintReport({
   ]);
   const workItems = mergeWorkItems([...sprintWorkItems, ...referencedWorkItems]);
 
-  logger.info("Correlating commits to Azure work items...");
-  const correlation = correlateCommitsToItems(commits, workItems);
+  const correlation = await withSpinner("Correlating commits to Azure work items...", async () => {
+    return correlateCommitsToItems(commits, workItems);
+  });
+
   const report = buildReportModel({
     repos,
     commits,
@@ -161,7 +197,10 @@ async function generateSingleSprintReport({
     to,
     includeUnlinkedTechnicalWork: config.report.includeUnlinkedTechnicalWork
   });
-  const markdown = renderMarkdown(report);
+
+  const markdown = await withSpinner("Building report...", async () => {
+    return renderMarkdown(report);
+  });
 
   const outputPath = resolveOutputPath(config.outputDir, options.output, sprint.name, to);
   await mkdir(path.dirname(outputPath), { recursive: true });
@@ -176,18 +215,6 @@ async function generateSingleSprintReport({
     report,
     outputPath
   };
-}
-
-function resolveSprintSelection(options: GenerateOptions): SprintSelection {
-  if (options.from && options.to) {
-    return { mode: "date-range", from: options.from, to: options.to };
-  }
-
-  if (!options.sprint || options.sprint === "current") {
-    return { mode: "current" };
-  }
-
-  return { mode: "named", sprintName: options.sprint };
 }
 
 function buildSprintFolderName(sprintName: string): string {

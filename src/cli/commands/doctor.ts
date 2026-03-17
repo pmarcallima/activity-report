@@ -4,6 +4,7 @@ import { logger } from "../../core/logger.js";
 import { loadConfig } from "../../config/load-config.js";
 import { detectGitIdentity } from "../../config/git-identity.js";
 import { runAzureCommand } from "../../infra/azure/cli.js";
+import { createSpinner, isTTY } from "../progress.js";
 import type { Config } from "../../config/schema.js";
 
 type DoctorCheckResult = {
@@ -85,24 +86,48 @@ async function checkConfig(): Promise<{ config: Config; result: DoctorCheckResul
   }
 }
 
+async function runCheck(name: string, checkFn: () => Promise<DoctorCheckResult>): Promise<DoctorCheckResult> {
+  if (!isTTY()) {
+    const result = await checkFn();
+    return result;
+  }
+
+  const spinner = createSpinner(`Checking ${name}...`);
+  spinner.start();
+
+  try {
+    const result = await checkFn();
+    if (result.passed) {
+      spinner.succeed(`Checking ${name}... ${result.message}`);
+    } else {
+      spinner.fail(`Checking ${name}... ${result.message}`);
+    }
+    return result;
+  } catch (error) {
+    spinner.fail(`Checking ${name}... failed`);
+    throw error;
+  }
+}
+
 export async function doctorCommand(): Promise<void> {
   const results: DoctorCheckResult[] = [];
 
-  results.push(await checkNodeVersion());
-  results.push(await checkAzLogin());
-  const configResult = await checkConfig();
-  results.push(configResult.result);
+  results.push(await runCheck("Node.js version", checkNodeVersion));
+  results.push(await runCheck("Azure CLI login", checkAzLogin));
+  const configResult = await runCheck("Configuration", checkConfig);
 
   if (configResult.config) {
-    results.push(await checkAzProjectAccess(configResult.config));
-    results.push(await checkRepoRoots(configResult.config.repoRoots));
-    results.push(await checkGitIdentity(configResult.config.repoRoots));
+    results.push(await runCheck("Azure project access", () => checkAzProjectAccess(configResult.config)));
+    results.push(await runCheck("Repository roots", () => checkRepoRoots(configResult.config.repoRoots)));
+    results.push(await runCheck("Git identity", () => checkGitIdentity(configResult.config.repoRoots)));
   }
 
-  logger.info("\nDoctor results:\n");
-  for (const result of results) {
-    const status = result.passed ? "✓" : "✗";
-    logger.info(`${status} ${result.name}: ${result.message}`);
+  if (!isTTY()) {
+    logger.info("\nDoctor results:\n");
+    for (const result of results) {
+      const status = result.passed ? "✓" : "✗";
+      logger.info(`${status} ${result.name}: ${result.message}`);
+    }
   }
 
   const allPassed = results.every((result) => result.passed);

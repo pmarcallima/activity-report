@@ -8,6 +8,7 @@ import { CONFIG_FILENAME } from "../../config/constants.js";
 import { promptRequired, promptPath, promptConfirm, promptSelect } from "../prompt-utils.js";
 import { detectAzureInfoFromRepo, type DetectedAzureInfo } from "../../infra/azure/detect-from-remotes.js";
 import { discoverRepos } from "../../infra/git/discover-repos.js";
+import { withSpinner } from "../progress.js";
 
 type AzureConfig = {
   organization: string;
@@ -20,33 +21,46 @@ async function detectConfiguration(): Promise<{
   azureInfo: DetectedAzureInfo | undefined;
   gitIdentity: GitIdentity | undefined;
 }> {
-  logger.info("Scanning for repositories...");
+  const repoRoot = await withSpinner("Scanning for repositories...", async () => {
+    return discoverRepoRoot();
+  });
 
-  const repoRoot = await discoverRepoRoot();
   let repos: Array<{ name: string; path: string }> = [];
 
   if (repoRoot) {
     try {
-      repos = await discoverRepos([repoRoot]);
-      logger.info(`Found ${repos.length} repositories under ${repoRoot}`);
+      repos = await withSpinner(`Found ${repos.length} repositories under ${repoRoot}`, async () => {
+        return discoverRepos([repoRoot]);
+      });
     } catch {
       // Failed to discover repos
     }
   }
 
-  logger.info("Detecting Azure DevOps configuration from git remotes...");
+  logger.info(`Found ${repos.length} repositories`);
 
-  let azureInfo: DetectedAzureInfo | undefined;
-  for (const repo of repos.slice(0, 5)) {
-    const results = await detectAzureInfoFromRepo(repo.path);
-    if (results.length > 0) {
-      azureInfo = results[0];
-      logger.info(`Detected Azure DevOps: ${azureInfo.organization} / ${azureInfo.project}`);
-      break;
+  const azureInfo = await withSpinner("Detecting Azure DevOps configuration from git remotes...", async () => {
+    for (const repo of repos.slice(0, 5)) {
+      const results = await detectAzureInfoFromRepo(repo.path);
+      if (results.length > 0) {
+        logger.info(`Detected Azure DevOps: ${results[0].organization} / ${results[0].project}`);
+        return results[0];
+      }
     }
+    return undefined;
+  });
+
+  if (azureInfo) {
+    logger.info(`Detected Azure DevOps: ${azureInfo.organization} / ${azureInfo.project}`);
   }
 
-  const gitIdentity = repos.length > 0 ? await detectGitIdentity(repos.map((r) => r.path)) : undefined;
+  const gitIdentity = await withSpinner("Detecting Git identity...", async () => {
+    if (repos.length > 0) {
+      return detectGitIdentity(repos.map((r) => r.path));
+    }
+    return undefined;
+  });
+
   if (gitIdentity) {
     logger.info(`Detected Git identity: ${gitIdentity.name} <${gitIdentity.email}>`);
   }
@@ -129,7 +143,7 @@ function resolveWorkRootPlaceholder(absolutePath: string, workRoot: string): str
   const normalizedWorkRoot = path.normalize(workRoot).toLowerCase();
 
   if (normalizedPath.startsWith(normalizedWorkRoot)) {
-    return absolutePath.replace(/^.+\\work\\/i, "${WORK_ROOT}\\").replace(/^.+\\work\//i, "${WORK_ROOT}/");
+    return absolutePath.replace(/^.+\\work\\/i, "${WORK_ROOT}\\").replace(/^.+\/work\//i, "${WORK_ROOT}/");
   }
 
   return absolutePath;

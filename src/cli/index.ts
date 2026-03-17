@@ -6,6 +6,7 @@ import { logger } from "../core/logger.js";
 import { generateCommand } from "./commands/generate.js";
 import { initCommand } from "./commands/init.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { viewCommand } from "./commands/view.js";
 
 const program = new Command();
 
@@ -22,6 +23,15 @@ program
   .option("--debug", "Write intermediate debug JSON files")
   .action(async (options) => {
     await generateCommand(options);
+  });
+
+program
+  .command("view")
+  .description("View generated activity reports")
+  .option("--latest", "Show the most recent report")
+  .argument("[name]", "Report name (e.g., sprint-43)")
+  .action(async (name, options) => {
+    await viewCommand({ name, ...options });
   });
 
 program
