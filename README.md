@@ -51,18 +51,23 @@ The `init` command will ask for:
 
 ## Commands
 
-- `init` - create configuration file
-- `doctor` - validate configuration and environment
-- `generate` - create activity report
+- `init` - Create or update local configuration
+- `doctor` - Validate configuration and environment
+- `generate` - Create activity report
+- `view` - Browse and view generated reports
 
 ## Usage
+
+### Generate Reports
 
 ```bash
 # Generate report for current sprint (default)
 activity-report generate
 
+# Interactive sprint selection (when running in terminal)
+activity-report generate
+
 # Generate report for a specific sprint
-activity-report generate --sprint current
 activity-report generate --sprint "Sprint 42"
 
 # Generate report for a date range (no sprint required)
@@ -73,7 +78,49 @@ activity-report generate --last-sprints 2
 
 # With debug output
 activity-report generate --debug
+
+# Specify custom output path
+activity-report generate --output ./my-reports
 ```
+
+### View Reports
+
+```bash
+# Interactive report browser (select from list)
+activity-report view
+
+# View most recent report
+activity-report view --latest
+
+# View specific report by name
+activity-report view sprint-43
+activity-report view 2026-03-01-to-2026-03-16
+```
+
+### Other Commands
+
+```bash
+# Initialize configuration
+activity-report init
+
+# Validate environment
+activity-report doctor
+```
+
+### Interactive Sprint Selection
+
+When running `activity-report generate` in a terminal without the `--sprint` flag, you'll be presented with an interactive list of available sprints from Azure DevOps:
+
+```
+? Select sprint:
+❯ Sprint 43 (03/03 - 03/16) [current]
+  Sprint 42 (02/17 - 03/02)
+  Sprint 41 (02/03 - 02/16)
+  ────────────────
+  Custom date range...
+```
+
+You can also choose "Custom date range..." to specify dates without selecting a sprint.
 
 ### Date Range Mode
 
@@ -83,6 +130,15 @@ When using `--from` and `--to` without `--sprint`, the report generates in date-
 - Report is saved to a date-based folder (e.g., `reports/2026-03-01-to-2026-03-13/report.md`)
 
 This is useful when you need a report for dates that don't align with sprints, or when you just want commit activity without sprint backlog items.
+
+## TUI Features
+
+The CLI includes several terminal user interface (TUI) enhancements:
+
+- **Progress indicators** - Visual feedback during long operations (repository scanning, commit collection, Azure API calls)
+- **Animated spinners** - The `doctor` command shows animated spinners for each check
+- **Interactive sprint selector** - Choose from available sprints in Azure DevOps using arrow keys
+- **Report viewer** - Browse past reports with colorized output highlighting user stories, work items, and commits
 
 ## Configuration
 
@@ -149,7 +205,7 @@ Use `${VAR_NAME}` placeholders for portable paths:
 Set the variable before running:
 
 ```powershell
-$env:WORK_ROOT = "C:\\Users\\you\\work"
+$env:WORK_ROOT = "C:\Users\you\work"
 activity-report generate --last-sprints 2
 ```
 
