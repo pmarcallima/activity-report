@@ -1,10 +1,9 @@
-import { select } from "@inquirer/prompts";
-import { input } from "@inquirer/prompts";
+import { checkbox, input } from "@inquirer/prompts";
 
-import type { AppConfig, AzureIteration, SprintSelection } from "../core/types.js";
+import type { AppConfig, SprintSelection } from "../core/types.js";
 import { getIterations } from "../infra/azure/get-iterations.js";
 import { getAccessToken } from "../infra/azure/get-access-token.js";
-import { withSpinner, isTTY } from "./progress.js";
+import { withSpinner } from "./progress.js";
 
 export interface SprintChoice {
   name: string;
@@ -26,7 +25,7 @@ export async function selectSprintInteractive(config: AppConfig): Promise<Sprint
 
   const now = new Date();
 
-  const choices: SprintChoice[] = sortedIterations.slice(0, 20).map((iteration) => {
+  const sprintChoices: SprintChoice[] = sortedIterations.slice(0, 20).map((iteration) => {
     const startDate = iteration.startDate ? new Date(iteration.startDate) : null;
     const finishDate = iteration.finishDate ? new Date(iteration.finishDate) : null;
 
@@ -46,13 +45,6 @@ export async function selectSprintInteractive(config: AppConfig): Promise<Sprint
     };
   });
 
-  choices.push({
-    name: "Custom date range...",
-    value: "__custom__",
-    dates: undefined,
-    isCurrent: false
-  });
-
   const formatChoice = (choice: SprintChoice): string => {
     let label = choice.name;
     if (choice.dates) {
@@ -64,23 +56,45 @@ export async function selectSprintInteractive(config: AppConfig): Promise<Sprint
     return label;
   };
 
-  const formattedChoices = choices.map((choice) => ({
-    name: formatChoice(choice),
-    value: choice.value
-  }));
+  const choices = [
+    ...sprintChoices.map((choice) => ({
+      name: formatChoice(choice),
+      value: choice.value
+    })),
+    {
+      name: "───────────────",
+      value: "__separator__",
+      disabled: true
+    },
+    {
+      name: "Custom date range...",
+      value: "__custom__"
+    }
+  ];
 
-  const selected = await select({
-    message: "Select sprint:",
-    choices: formattedChoices
+  const selected = await checkbox({
+    message: "Select sprint(s) (use <space> to select, <enter> to confirm):",
+    choices: choices as Array<{ name: string; value: string }>,
+    validate: (answers) => {
+      if (answers.length === 0) {
+        return "Please select at least one sprint.";
+      }
+      return true;
+    }
   });
 
-  if (selected === "__custom__") {
+  if (selected.includes("__custom__")) {
     return await promptCustomDateRange();
   }
 
-  const selectedIteration = sortedIterations.find((i) => i.name === selected);
-  if (selectedIteration) {
-    return { mode: "named", sprintName: selectedIteration.name };
+  const filtered = selected.filter((s) => s !== "__separator__" && s !== "__custom__");
+
+  if (filtered.length === 1) {
+    return { mode: "named", sprintName: filtered[0] };
+  }
+
+  if (filtered.length > 1) {
+    return { mode: "multi-sprint", sprintNames: filtered };
   }
 
   return { mode: "current" };

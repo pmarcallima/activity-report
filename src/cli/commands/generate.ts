@@ -41,6 +41,17 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
   }
 
   const sprintSelection = await resolveSprintSelectionInteractive(options, config);
+
+  if (sprintSelection.mode === "multi-sprint") {
+    await generateMultiSprintCommand({
+      config,
+      token,
+      sprintNames: sprintSelection.sprintNames,
+      options
+    });
+    return;
+  }
+
   const result = await generateSingleSprintReport({ config, token, sprintSelection, options });
 
   logger.info(`Report written to ${result.outputPath}`);
@@ -65,6 +76,64 @@ async function resolveSprintSelectionInteractive(options: GenerateOptions, confi
 
   // Fallback to current sprint for non-interactive mode
   return { mode: "current" };
+}
+
+async function generateMultiSprintCommand({
+  config,
+  token,
+  sprintNames,
+  options
+}: {
+  config: AppConfig;
+  token: string;
+  sprintNames: string[];
+  options: GenerateOptions;
+}): Promise<void> {
+  const allIterations = await withSpinner("Fetching sprint details...", async () => {
+    return getIterations(config, token);
+  });
+
+  const selectedSprints = sprintNames
+    .map((name) => allIterations.find((i) => i.name === name))
+    .filter((i): i is AzureIteration => i !== undefined && i.startDate !== undefined && i.finishDate !== undefined);
+
+  if (selectedSprints.length === 0) {
+    throw new Error("No valid sprints selected.");
+  }
+
+  const sprintNumbers = selectedSprints
+    .map((s) => extractSprintNumber(s.name))
+    .filter((n): n is number => n !== undefined)
+    .join("-");
+  const combinedSlug = sprintNumbers ? `sprints-${sprintNumbers}` : `multi-sprint`;
+
+  const outputBase = options.output ? path.resolve(options.output) : path.resolve(config.outputDir, combinedSlug);
+  const reports: GeneratePipelineResult[] = [];
+
+  for (const sprint of selectedSprints) {
+    logger.info(`Generating report for ${sprint.name}...`);
+    const result = await generateSingleSprintReport({
+      config,
+      token,
+      sprintSelection: { mode: "named", sprintName: sprint.name },
+      options: {
+        ...options,
+        output: path.join(outputBase, buildSprintFolderName(sprint.name))
+      }
+    });
+
+    reports.push(result);
+  }
+
+  const combined: MultiSprintReport = {
+    generatedAt: new Date().toISOString(),
+    reports: reports.map((result) => result.report)
+  };
+  const combinedPath = path.join(outputBase, "report.md");
+  await mkdir(path.dirname(combinedPath), { recursive: true });
+  await writeFile(combinedPath, renderMultiSprintMarkdown(combined), "utf8");
+
+  logger.info(`Combined report written to ${combinedPath}`);
 }
 
 async function generateLastSprintsCommand({
