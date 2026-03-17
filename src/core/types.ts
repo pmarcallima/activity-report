@@ -9,6 +9,7 @@ export type GenerateOptions = {
   to?: string;
   output?: string;
   debug?: boolean;
+  forSingleSprintInMulti?: string;
 };
 
 export type SprintSelection =

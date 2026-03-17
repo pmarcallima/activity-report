@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { loadConfig } from "../../config/load-config.js";
 import { logger } from "../../core/logger.js";
-import { slugify, uniqueNumbers, extractSprintNumber } from "../../core/utils.js";
+import { uniqueNumbers, extractSprintNumber, buildMultiSprintFolderName } from "../../core/utils.js";
 import type {
   AppConfig,
   AzureIteration,
@@ -101,13 +101,8 @@ async function generateMultiSprintCommand({
     throw new Error("No valid sprints selected.");
   }
 
-  const sprintNumbers = selectedSprints
-    .map((s) => extractSprintNumber(s.name))
-    .filter((n): n is number => n !== undefined)
-    .join("-");
-  const combinedSlug = sprintNumbers ? `sprints-${sprintNumbers}` : `multi-sprint`;
-
-  const outputBase = options.output ? path.resolve(options.output) : path.resolve(config.outputDir, combinedSlug);
+  const folderName = buildMultiSprintFolderName(sprintNames);
+  const outputBase = options.output ? path.resolve(options.output) : path.resolve(config.outputDir, folderName);
   const reports: GeneratePipelineResult[] = [];
 
   for (const sprint of selectedSprints) {
@@ -118,7 +113,8 @@ async function generateMultiSprintCommand({
       sprintSelection: { mode: "named", sprintName: sprint.name },
       options: {
         ...options,
-        output: path.join(outputBase, buildSprintFolderName(sprint.name))
+        output: outputBase,
+        forSingleSprintInMulti: buildSprintFileName(sprint.name)
       }
     });
 
@@ -169,14 +165,9 @@ async function generateLastSprintsCommand({
 
   const selectedSprints = selectLastSprints(allIterations, currentSprint, sprintCount);
 
-  // Generate folder name: sprints-12-11-10
-  const sprintNumbers = selectedSprints
-    .map((s) => extractSprintNumber(s.name))
-    .filter((n): n is number => n !== undefined)
-    .join("-");
-  const combinedSlug = sprintNumbers ? `sprints-${sprintNumbers}` : `last-${sprintCount}-sprints`;
+  const folderName = buildMultiSprintFolderName(selectedSprints.map(s => s.name));
   
-  const outputBase = options.output ? path.resolve(options.output) : path.resolve(config.outputDir, combinedSlug);
+  const outputBase = options.output ? path.resolve(options.output) : path.resolve(config.outputDir, folderName);
   const reports: GeneratePipelineResult[] = [];
 
   for (const sprint of selectedSprints) {
@@ -187,7 +178,8 @@ async function generateLastSprintsCommand({
       sprintSelection: { mode: "named", sprintName: sprint.name },
       options: {
         ...options,
-        output: path.join(outputBase, buildSprintFolderName(sprint.name))
+        output: outputBase,
+        forSingleSprintInMulti: buildSprintFileName(sprint.name)
       }
     });
 
@@ -271,7 +263,7 @@ async function generateSingleSprintReport({
     return renderMarkdown(report);
   });
 
-  const outputPath = resolveOutputPath(config.outputDir, options.output, sprint.name, to);
+  const outputPath = resolveOutputPath(config.outputDir, options.output, sprint.name, to, options.forSingleSprintInMulti);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, markdown, "utf8");
 
@@ -286,32 +278,45 @@ async function generateSingleSprintReport({
   };
 }
 
+function buildSprintFileName(sprintName: string): string {
+  const sprintNumber = extractSprintNumber(sprintName);
+  if (sprintNumber !== undefined) {
+    return `sprint-${sprintNumber}.md`;
+  }
+  return `${sprintName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}.md`;
+}
+
 function buildSprintFolderName(sprintName: string): string {
   const sprintNumber = extractSprintNumber(sprintName);
   if (sprintNumber !== undefined) {
     return `sprint-${sprintNumber}`;
   }
-  // Fallback to slugified name for non-standard sprint names
-  return slugify(sprintName);
+  return sprintName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
 }
 
 function resolveOutputPath(
   outputDir: string, 
   customOutput: string | undefined, 
   sprintName: string, 
-  toDate: string
+  toDate: string,
+  forSingleSprintInMulti?: string
 ): string {
-  const folderName = buildSprintFolderName(sprintName);
-  
   if (customOutput) {
     const resolved = path.resolve(customOutput);
     if (path.extname(resolved) === ".md") {
       return resolved;
     }
-    return path.join(resolved, folderName, "report.md");
+    if (forSingleSprintInMulti) {
+      return path.join(resolved, forSingleSprintInMulti);
+    }
+    return path.join(resolved, buildSprintFileName(sprintName));
   }
 
-  return path.join(path.resolve(outputDir), folderName, "report.md");
+  if (forSingleSprintInMulti) {
+    return path.join(path.resolve(outputDir), forSingleSprintInMulti);
+  }
+
+  return path.join(path.resolve(outputDir), buildSprintFileName(sprintName));
 }
 
 function selectLastSprints(iterations: AzureIteration[], currentSprint: AzureIteration, count: number): AzureIteration[] {

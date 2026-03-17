@@ -17,23 +17,31 @@ export async function scanReports(outputDir: string): Promise<ReportMeta[]> {
     const entries = await readdir(outputDir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-
-      const reportPath = path.join(outputDir, entry.name, "report.md");
-
-      try {
-        const content = await readFile(reportPath, "utf-8");
-        const meta = parseReportMetadata(entry.name, content, reportPath);
-        if (meta) {
-          reports.push(meta);
+      if (entry.isDirectory()) {
+        const reportPath = path.join(outputDir, entry.name, "report.md");
+        try {
+          const content = await readFile(reportPath, "utf-8");
+          const meta = parseReportMetadata(entry.name, content, reportPath);
+          if (meta) {
+            reports.push(meta);
+          }
+        } catch {
+          // Skip folders without report.md
         }
-      } catch {
-        // Skip folders without report.md
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        const filePath = path.join(outputDir, entry.name);
+        try {
+          const content = await readFile(filePath, "utf-8");
+          const meta = parseReportMetadata(entry.name.replace(".md", ""), content, filePath);
+          if (meta) {
+            reports.push(meta);
+          }
+        } catch {
+          // Skip unreadable files
+        }
       }
     }
-  } catch (error) {
+  } catch {
     // Output directory doesn't exist
   }
 
