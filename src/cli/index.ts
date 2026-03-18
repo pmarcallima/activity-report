@@ -3,10 +3,12 @@
 import { Command } from "commander";
 
 import { logger } from "../core/logger.js";
+import { parseLocale } from "../core/i18n.js";
 import { generateCommand } from "./commands/generate.js";
 import { initCommand } from "./commands/init.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { viewCommand } from "./commands/view.js";
+import { tutorialCommand } from "./commands/tutorial.js";
 
 const program = new Command();
 
@@ -27,9 +29,9 @@ program
 
 program
   .command("view")
-  .description("View generated activity reports")
-  .option("--latest", "Show the most recent report")
-  .argument("[name]", "Report name (e.g., sprint-43)")
+  .description("Browse and view generated Markdown reports (uses outputDir from config)")
+  .option("--latest", "Open the most recent report without prompting")
+  .argument("[name]", "Report name: single-sprint (e.g. sprint-43) or multi-sprint folder (e.g. sprints-29-44)")
   .action(async (name, options) => {
     await viewCommand({ name, ...options });
   });
@@ -47,6 +49,14 @@ program
   .description("Validate configuration and environment")
   .action(async () => {
     await doctorCommand();
+  });
+
+program
+  .command("tutorial")
+  .description("Show a short step-by-step quick start guide")
+  .option("--locale <lang>", "Language: en or pt-BR (overrides config)")
+  .action(async (options: { locale?: string }) => {
+    await tutorialCommand({ locale: parseLocale(options.locale) });
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

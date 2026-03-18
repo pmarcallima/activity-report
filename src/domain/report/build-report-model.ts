@@ -9,6 +9,7 @@ type BuildReportModelParams = {
   from: string;
   to: string;
   includeUnlinkedTechnicalWork: boolean;
+  locale: "pt-BR" | "en";
 };
 
 export function buildReportModel({
@@ -18,7 +19,8 @@ export function buildReportModel({
   correlation,
   from,
   to,
-  includeUnlinkedTechnicalWork
+  includeUnlinkedTechnicalWork,
+  locale
 }: BuildReportModelParams): ReportModel {
   const unlinkedRepos = includeUnlinkedTechnicalWork ? buildUnlinkedRepoActivity(correlation) : [];
 
@@ -26,14 +28,21 @@ export function buildReportModel({
     sprint,
     period: { from, to },
     stories: correlation.includedStories,
+    standaloneWorkItems: correlation.standaloneWorkItems,
     unlinkedRepos,
     includeUnlinkedTechnicalWork,
+    locale,
     stats: {
       repoCount: repos.length,
       commitCount: commits.length,
       storyCount: correlation.includedStories.length,
-      relatedItemCount: correlation.includedStories.reduce((total, story) => total + story.relatedWorkItemIds.length, 0),
-      hotfixCount: correlation.includedStories.reduce((total, story) => total + story.hotfixCommits.length, 0),
+      standaloneItemCount: correlation.standaloneWorkItems.length,
+      relatedItemCount:
+        correlation.includedStories.reduce((total, story) => total + story.relatedWorkItemIds.length, 0) +
+        correlation.standaloneWorkItems.reduce((total, story) => total + story.relatedWorkItemIds.length, 0),
+      hotfixCount:
+        correlation.includedStories.reduce((total, story) => total + story.hotfixCommits.length, 0) +
+        correlation.standaloneWorkItems.reduce((total, story) => total + story.hotfixCommits.length, 0),
       unlinkedCommitCount: unlinkedRepos.reduce((total, repo) => total + repo.commitCount, 0),
       unlinkedRepoCount: unlinkedRepos.length
     }

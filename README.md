@@ -4,14 +4,16 @@ Generate a sprint-scoped Markdown activity report by correlating Git commits fro
 
 ## Requirements
 
-- Node.js 22+
-- Azure CLI logged in (`az login`)
+- **Node.js 22+**
+- **Azure CLI** logged in (`az login`) so the CLI can access Azure DevOps
 
 ## Installation
 
-### Option 1: Global CLI (Recommended)
+Run these commands from the **project root** (the folder containing `package.json`).
 
-Build and link globally:
+### Option 1: Global CLI (recommended)
+
+Install dependencies, build, and expose the CLI globally:
 
 ```bash
 npm install
@@ -19,35 +21,69 @@ npm run build
 npm link
 ```
 
-Now you can run `activity-report` from anywhere:
+After `npm link`, the `activity-report` command is available in your PATH. You can run it from any directory; the CLI looks for `activity-report.json` in the current working directory (or use it from the project root after `init`).
 
 ```bash
+cd /path/to/your/work
 activity-report init
 activity-report doctor
 activity-report generate --last-sprints 2
 ```
 
-### Option 2: Local Development
+### Option 2: Local development (no global install)
+
+Use the `dev` script so you can run the CLI without building or linking:
 
 ```bash
 pnpm install
+# or: npm install
+```
+
+Then run commands via:
+
+```bash
 pnpm dev init
 pnpm dev doctor
 pnpm dev generate --last-sprints 2
+pnpm dev view
 ```
+
+With npm: `npm run dev init`, `npm run dev doctor`, etc.
 
 ## Quickstart
 
-Run the init command to create configuration:
+1. **Install** (Option 1 or 2 above).
+2. **Configure** — from the directory where you want to keep your config (e.g. project root or work folder), run:
 
-```bash
-activity-report init
-```
+   ```bash
+   activity-report init
+   ```
 
-The `init` command will ask for:
-- your Azure DevOps organization and project
-- repository root folders
-- output directory for reports
+   `init` will ask for:
+   - Azure DevOps organization and project
+   - Repository root folder(s) (parent of your Git repos)
+   - Output directory for reports
+   - Optional: Git author email(s) for commit filtering, report language (pt-BR / en)
+
+3. **Check** that everything is set up:
+
+   ```bash
+   activity-report doctor
+   ```
+
+4. **Generate** your first report:
+
+   ```bash
+   activity-report generate --last-sprints 2
+   ```
+
+5. **View** reports:
+
+   ```bash
+   activity-report view
+   ```
+
+Reports are written to the `outputDir` you chose (e.g. `./reports` or an absolute path). Run `activity-report` from a directory that contains `activity-report.json`, or the CLI will not find the config.
 
 ## Commands
 
@@ -55,6 +91,7 @@ The `init` command will ask for:
 - `doctor` - Validate configuration and environment
 - `generate` - Create activity report
 - `view` - Browse and view generated reports
+- `tutorial` - Show a short step-by-step quick start guide
 
 ## Usage
 
@@ -85,17 +122,22 @@ activity-report generate --output ./my-reports
 
 ### View Reports
 
+Reports are read from the `outputDir` configured in `activity-report.json`. The viewer lists all Markdown reports found there (single-sprint files like `sprint-43.md` and multi-sprint folders like `sprints-29-44/report.md`).
+
 ```bash
-# Interactive report browser (select from list)
+# Interactive report browser: choose from the list (sprint name, period, commit count)
 activity-report view
 
-# View most recent report
+# Open the most recent report directly (no prompt)
 activity-report view --latest
 
-# View specific report by name
+# Open a specific report by name (partial match works)
 activity-report view sprint-43
+activity-report view sprints-29-44
 activity-report view 2026-03-01-to-2026-03-16
 ```
+
+The viewer shows colorized output (headings, US#/card refs, commit hashes, repo names). Messages and prompts respect the `locale` setting (e.g. pt-BR).
 
 ### Other Commands
 
@@ -105,6 +147,10 @@ activity-report init
 
 # Validate environment
 activity-report doctor
+
+# Show quick start guide (uses config locale, or --locale en / --locale pt-BR)
+activity-report tutorial
+activity-report tutorial --locale pt-BR
 ```
 
 ### Interactive Sprint Selection
@@ -142,7 +188,9 @@ The CLI includes several terminal user interface (TUI) enhancements:
 
 ## Configuration
 
-The CLI uses a single `activity-report.json` file. This file contains personal settings (paths, email) and should **not be committed** to version control.
+The CLI uses a single **`activity-report.json`** file. It is created by `activity-report init` and should **not be committed** to version control (paths, emails, and org/project are environment-specific).
+
+The CLI looks for this file in the **current working directory** when you run any command. Run `activity-report` from the folder that contains `activity-report.json`, or place the file in the directory where you usually work.
 
 Example configuration:
 
@@ -156,8 +204,10 @@ Example configuration:
     "C:\\Users\\you\\work"
   ],
   "outputDir": "C:\\Users\\you\\reports",
+  "locale": "pt-BR",
   "git": {
-    "authorEmail": "you@company.com"
+    "authorEmail": "you@company.com",
+    "authorEmails": ["you@company.com", "personal@gmail.com"]
   },
   "ignoreBranches": ["master", "develop"],
   "report": {
@@ -168,6 +218,12 @@ Example configuration:
   }
 }
 ```
+
+- **`locale`** (optional) — Report and CLI message language: `"pt-BR"` or `"en"` (default).
+
+### Git author filter
+
+By default only commits whose author email matches `git.authorEmail` are included. To include commits from several emails (e.g. personal and corporate), set `git.authorEmails` to an array; commits from any listed email are then included. Example: early commits with `joaovictooroc@gmail.com` and later ones with `joao.carvalho@groupsoftware.com.br` can both appear by using `"authorEmails": ["joaovictooroc@gmail.com", "joao.carvalho@groupsoftware.com.br"]`. If `authorEmails` is set, `authorEmail` is ignored.
 
 ### Git Identity
 
@@ -212,8 +268,8 @@ activity-report generate --last-sprints 2
 ## Current Behavior
 
 - Scans nested repositories under each path in `repoRoots`
-- Reads commits for the configured Git author
-- Parses `feature/<id>_description.<name>` and `hotfix/<id>_description.<name>` branches
+- Reads commits for the configured Git author(s) (`authorEmail` or `authorEmails`)
+- Parses branch names: `feature/<id>_...`, `hotfix/<id>_...`, and fallback `feature/<id>` / `hotfix/<id>` (e.g. User Story number only)
 - Loads sprint work items from Azure DevOps
 - Rolls task, bug, and other work item activity up to the parent user story when possible
 - Shows link quality as exact or inferred in report sections
@@ -223,4 +279,5 @@ activity-report generate --last-sprints 2
 - When no current sprint is active, `--last-sprints` falls back to the most recent sprint
 - Date-range mode (`--from` + `--to` without `--sprint`) skips Azure work item loading
 - Writes a Markdown report to `outputDir`
+- Report text and CLI messages use `locale` when set (e.g. `pt-BR`)
 - Writes debug JSON only when `--debug` is enabled

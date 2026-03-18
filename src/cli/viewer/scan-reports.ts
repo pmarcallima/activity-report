@@ -59,8 +59,8 @@ function parseReportMetadata(folderName: string, content: string, reportPath: st
   for (const line of lines) {
     if (line.startsWith("Sprint: ")) {
       sprintName = line.slice(8).trim();
-    } else if (line.startsWith("Period: ")) {
-      period = line.slice(8).trim();
+    } else if (line.startsWith("Period: ") || line.startsWith("Período: ")) {
+      period = (line.startsWith("Period: ") ? line.slice(8) : line.slice(10)).trim();
     } else if (line.includes("commit")) {
       const match = line.match(/(\d+)\s+commit/);
       if (match) {

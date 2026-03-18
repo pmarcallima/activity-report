@@ -84,6 +84,7 @@ export type StoryAggregate = {
   referencedItemIds: number[];
   exactMatchCount: number;
   inferredMatchCount: number;
+  workItemType?: string;
 };
 
 export type CorrelationExclusionReason =
@@ -94,6 +95,7 @@ export type CorrelationExclusionReason =
 
 export type CorrelationResult = {
   includedStories: StoryAggregate[];
+  standaloneWorkItems: StoryAggregate[];
   excludedCommits: Array<{
     commit: GitCommit;
     reason: CorrelationExclusionReason;
@@ -116,12 +118,15 @@ export type ReportModel = {
   };
   summary: string;
   stories: StoryAggregate[];
+  standaloneWorkItems: StoryAggregate[];
   unlinkedRepos: UnlinkedRepoActivity[];
   includeUnlinkedTechnicalWork: boolean;
+  locale: "pt-BR" | "en";
   stats: {
     repoCount: number;
     commitCount: number;
     storyCount: number;
+    standaloneItemCount: number;
     relatedItemCount: number;
     hotfixCount: number;
     unlinkedCommitCount: number;

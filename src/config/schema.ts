@@ -7,9 +7,12 @@ export const configSchema = z.object({
   }),
   repoRoots: z.array(z.string().min(1)).min(1),
   outputDir: z.string().min(1),
+  /** Report and CLI message language. */
+  locale: z.enum(["pt-BR", "en"]).optional().default("en"),
   git: z
     .object({
-      authorEmail: z.string().email().optional()
+      authorEmail: z.string().email().optional(),
+      authorEmails: z.array(z.string().email().min(1)).optional()
     })
     .optional(),
   ignoreBranches: z.array(z.string().min(1)).default(["master", "develop"]),

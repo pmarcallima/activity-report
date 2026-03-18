@@ -1,6 +1,7 @@
 import { checkbox, input } from "@inquirer/prompts";
 
 import type { AppConfig, SprintSelection } from "../core/types.js";
+import { getCliMessages } from "../core/i18n.js";
 import { getIterations } from "../infra/azure/get-iterations.js";
 import { getAccessToken } from "../infra/azure/get-access-token.js";
 import { withSpinner } from "./progress.js";
@@ -14,8 +15,9 @@ export interface SprintChoice {
 
 export async function selectSprintInteractive(config: AppConfig): Promise<SprintSelection> {
   const token = await getAccessToken();
+  const t = getCliMessages(config.locale ?? "en");
 
-  const iterations = await withSpinner("Fetching sprints from Azure...", async () => {
+  const iterations = await withSpinner(t.fetchingSprints, async () => {
     return getIterations(config, token);
   });
 
@@ -67,24 +69,24 @@ export async function selectSprintInteractive(config: AppConfig): Promise<Sprint
       disabled: true
     },
     {
-      name: "Custom date range...",
+      name: t.customDateRange,
       value: "__custom__"
     }
   ];
 
   const selected = await checkbox({
-    message: "Select sprint(s) (use <space> to select, <enter> to confirm):",
+    message: t.selectSprints,
     choices: choices as Array<{ name: string; value: string }>,
     validate: (answers) => {
       if (answers.length === 0) {
-        return "Please select at least one sprint.";
+        return t.selectOneSprint;
       }
       return true;
     }
   });
 
   if (selected.includes("__custom__")) {
-    return await promptCustomDateRange();
+    return await promptCustomDateRange(config);
   }
 
   const filtered = selected.filter((s) => s !== "__separator__" && s !== "__custom__");
@@ -100,22 +102,24 @@ export async function selectSprintInteractive(config: AppConfig): Promise<Sprint
   return { mode: "current" };
 }
 
-async function promptCustomDateRange(): Promise<SprintSelection> {
+async function promptCustomDateRange(config: AppConfig): Promise<SprintSelection> {
+  const t = getCliMessages(config.locale ?? "en");
+
   const from = await input({
-    message: "Start date (YYYY-MM-DD):",
+    message: t.startDate,
     validate: (value: string) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return "Please enter a date in YYYY-MM-DD format.";
+        return t.dateFormatError;
       }
       return true;
     }
   });
 
   const to = await input({
-    message: "End date (YYYY-MM-DD):",
+    message: t.endDate,
     validate: (value: string) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return "Please enter a date in YYYY-MM-DD format.";
+        return t.dateFormatError;
       }
       return true;
     }

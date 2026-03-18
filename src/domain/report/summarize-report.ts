@@ -1,6 +1,8 @@
 import type { GitCommit, ReportModel, StoryAggregate, UnlinkedRepoActivity } from "../../core/types.js";
+import { getReportMessages, replaceParams } from "../../core/i18n.js";
 
 export function summarizeReport(report: Omit<ReportModel, "summary">): string {
+  const t = getReportMessages(report.locale);
   const parts: string[] = [];
 
   if (report.stories.length > 0) {
@@ -10,20 +12,33 @@ export function summarizeReport(report: Omit<ReportModel, "summary">): string {
 
     if (topStory) {
       parts.push(
-        `Focused on ${formatStoryRef(topStory)} across ${formatRepoList(topStory.repos)}, covering ${topThemesFromCommits(topStory.commits, 3).join(", "
-        )}.`
+        replaceParams(t.summaryFocused, {
+          ref: formatStoryRef(topStory),
+          repos: formatRepoList(topStory.repos, t),
+          themes: topThemesFromCommits(topStory.commits, 3, t).join(", ")
+        })
       );
     }
   } else {
-    parts.push("No Azure-linked user stories were correlated for this sprint.");
+    parts.push(t.summaryNoStories);
+  }
+
+  if (report.standaloneWorkItems.length > 0) {
+    parts.push(
+      report.standaloneWorkItems.length === 1
+        ? replaceParams(t.summaryStandaloneOne, {})
+        : replaceParams(t.summaryStandalone, { count: String(report.standaloneWorkItems.length) })
+    );
   }
 
   if (report.includeUnlinkedTechnicalWork && report.unlinkedRepos.length > 0) {
     const topRepo = report.unlinkedRepos[0];
     if (topRepo) {
       parts.push(
-        `Additional direct work was captured in ${topRepo.repoName}, mainly around ${topThemesFromCommits(topRepo.commits, 3).join(", "
-        )}.`
+        replaceParams(t.summaryUnlinkedRepo, {
+          repo: topRepo.repoName,
+          themes: topThemesFromCommits(topRepo.commits, 3, t).join(", ")
+        })
       );
     }
   }
@@ -31,20 +46,34 @@ export function summarizeReport(report: Omit<ReportModel, "summary">): string {
   return parts.join(" ");
 }
 
-export function summarizeStory(story: StoryAggregate): string {
-  const themes = topThemesFromCommits(story.commits, 3);
+export function summarizeStory(story: StoryAggregate, locale: ReportModel["locale"] = "en"): string {
+  const t = getReportMessages(locale);
+  const themes = topThemesFromCommits(story.commits, 3, t);
   const relatedItemCount = story.relatedWorkItemIds.length || story.referencedItemIds.length;
-  return `Worked across ${formatRepoList(story.repos)} on ${relatedItemCount} related item${
-    relatedItemCount === 1 ? "" : "s"
-  }, mainly covering ${themes.join(", ")}.`;
+  return replaceParams(t.summaryWorkedAcross, {
+    repos: formatRepoList(story.repos, t),
+    count: String(relatedItemCount),
+    themes: themes.join(", ")
+  });
 }
 
-export function summarizeUnlinkedRepo(repo: UnlinkedRepoActivity): string {
-  const themes = topThemesFromCommits(repo.commits, 3);
-  return `Captured ${repo.commitCount} direct commit${repo.commitCount === 1 ? "" : "s"} in ${repo.repoName}, mainly around ${themes.join(", ")}.`;
+export function summarizeUnlinkedRepo(repo: UnlinkedRepoActivity, locale: ReportModel["locale"] = "en"): string {
+  const t = getReportMessages(locale);
+  const themes = topThemesFromCommits(repo.commits, 3, t);
+  return repo.commitCount === 1
+    ? replaceParams(t.summaryCapturedOne, { repo: repo.repoName, themes: themes.join(", ") })
+    : replaceParams(t.summaryCaptured, {
+        count: String(repo.commitCount),
+        repo: repo.repoName,
+        themes: themes.join(", ")
+      });
 }
 
-function topThemesFromCommits(commits: GitCommit[], limit: number): string[] {
+function topThemesFromCommits(
+  commits: GitCommit[],
+  limit: number,
+  t: import("../../core/i18n.js").ReportMessages
+): string[] {
   const normalized = commits
     .map((commit) => normalizeCommitMessage(commit.message))
     .filter((message) => message.length > 0);
@@ -63,7 +92,7 @@ function topThemesFromCommits(commits: GitCommit[], limit: number): string[] {
     .slice(0, limit)
     .map(([theme]) => theme);
 
-  return themes.length > 0 ? themes : ["implementation updates"];
+  return themes.length > 0 ? themes : [t.themeFallback];
 }
 
 function normalizeCommitMessage(message: string): string {
@@ -77,16 +106,16 @@ function normalizeCommitMessage(message: string): string {
     .trim();
 }
 
-function formatRepoList(repos: string[]): string {
+function formatRepoList(repos: string[], t: import("../../core/i18n.js").ReportMessages): string {
   if (repos.length === 1) {
-    return repos[0] ?? "the repository";
+    return repos[0] ?? t.theRepository;
   }
 
   if (repos.length === 2) {
-    return `${repos[0]} and ${repos[1]}`;
+    return `${repos[0]} ${t.and} ${repos[1]}`;
   }
 
-  return `${repos.slice(0, -1).join(", ")}, and ${repos[repos.length - 1]}`;
+  return `${repos.slice(0, -1).join(", ")}, ${t.and} ${repos[repos.length - 1]}`;
 }
 
 function formatStoryRef(story: StoryAggregate): string {

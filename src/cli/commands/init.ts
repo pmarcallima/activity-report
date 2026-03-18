@@ -107,35 +107,60 @@ async function promptRepoConfiguration(
 
 async function promptOutputConfiguration(repoRoot: string): Promise<string> {
   const defaultOutput = path.join(repoRoot, "activity-report", "reports");
-  const outputDir = await promptPath("Output directory for generated reports:", defaultOutput);
+  const outputDir = await promptPath("Pasta de saída dos relatórios:", defaultOutput);
   return outputDir;
 }
 
-async function promptGitConfiguration(detectedIdentity?: GitIdentity): Promise<string | undefined> {
+async function promptLocale(): Promise<"pt-BR" | "en"> {
+  const choice = await promptSelect("Idioma dos relatórios e mensagens:", [
+    { name: "Português (Brasil)", value: "pt-BR" },
+    { name: "English", value: "en" }
+  ]);
+  return choice as "pt-BR" | "en";
+}
+
+async function promptGitConfiguration(detectedIdentity?: GitIdentity): Promise<string[] | undefined> {
+  const collectEmails = async (firstEmail: string): Promise<string[]> => {
+    const emails = [firstEmail];
+    while (true) {
+      const addMore = await promptConfirm("Deseja cadastrar mais algum email para filtro de commits? (s/n)", false);
+      if (!addMore) {
+        break;
+      }
+      const nextEmail = await promptRequired("Outro email (ex.: pessoal ou corporativo):");
+      if (nextEmail && !emails.includes(nextEmail)) {
+        emails.push(nextEmail);
+      }
+    }
+    return emails;
+  };
+
   if (detectedIdentity) {
     const useDetected = await promptConfirm(
-      `Filter commits by detected email: ${detectedIdentity.email}?`,
+      `Filtrar commits pelo email detectado: ${detectedIdentity.email}?`,
       true
     );
 
     if (useDetected) {
-      return detectedIdentity.email;
+      return await collectEmails(detectedIdentity.email);
     }
 
-    const configureDifferent = await promptConfirm("Configure a different email for commit filtering?", false);
+    const configureDifferent = await promptConfirm("Configurar outro(s) email(s) para filtro de commits?", false);
     if (!configureDifferent) {
       return undefined;
     }
 
-    return promptRequired("Git author email for commit filtering:");
+    const first = await promptRequired("Email do autor Git para filtro de commits:");
+    return first ? await collectEmails(first) : undefined;
   }
 
-  const configureGit = await promptConfirm("Configure Git author email for commit filtering?", true);
+  const configureGit = await promptConfirm("Configurar email do autor para filtro de commits?", true);
   if (!configureGit) {
     return undefined;
   }
 
-  return promptRequired("Git author email:");
+  const first = await promptRequired("Email do autor Git para filtro de commits:");
+  return first ? await collectEmails(first) : undefined;
 }
 
 function resolveWorkRootPlaceholder(absolutePath: string, workRoot: string): string {
@@ -154,8 +179,15 @@ function buildConfigContent(
   repoRoot: string,
   outputDir: string,
   useEnvPlaceholders: boolean,
-  gitEmail?: string
+  gitEmails?: string[],
+  locale?: "pt-BR" | "en"
 ): string {
+  const gitSection =
+    gitEmails && gitEmails.length > 0
+      ? gitEmails.length === 1
+        ? { git: { authorEmail: gitEmails[0] } }
+        : { git: { authorEmails: gitEmails } }
+      : {};
   const config = {
     azure: {
       organization: azure.organization,
@@ -163,7 +195,8 @@ function buildConfigContent(
     },
     repoRoots: useEnvPlaceholders ? [resolveWorkRootPlaceholder(repoRoot, repoRoot)] : [repoRoot],
     outputDir: useEnvPlaceholders ? resolveWorkRootPlaceholder(outputDir, repoRoot) : outputDir,
-    ...(gitEmail ? { git: { authorEmail: gitEmail } } : {}),
+    ...gitSection,
+    ...(locale ? { locale } : {}),
     ignoreBranches: ["master", "develop"],
     report: {
       includeUnlinkedTechnicalWork: true
@@ -203,13 +236,13 @@ export async function initCommand(options: { force?: boolean }): Promise<void> {
     const outputDir = await promptOutputConfiguration(selectedRepoRoot);
 
     const useEnvPlaceholders = await promptConfirm(
-      "Use ${WORK_ROOT} placeholders for paths (recommended for team sharing)?",
+      "Usar placeholders ${WORK_ROOT} nos caminhos (recomendado para time)?",
       true
     );
 
-    const gitEmail = await promptGitConfiguration(gitIdentity);
-
-    const configContent = buildConfigContent(azure, selectedRepoRoot, outputDir, useEnvPlaceholders, gitEmail);
+    const locale = await promptLocale();
+    const gitEmails = await promptGitConfiguration(gitIdentity);
+    const configContent = buildConfigContent(azure, selectedRepoRoot, outputDir, useEnvPlaceholders, gitEmails, locale);
 
     const confirmed = await previewAndConfirm(configContent);
 

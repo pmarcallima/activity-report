@@ -30,8 +30,16 @@ function colorizeLine(line: string): string {
     return colors.bold.green(line);
   }
 
-  // Meta lines (Sprint:, Period:)
-  if (line.startsWith("Sprint:") || line.startsWith("Period:")) {
+  // Meta lines (Sprint:, Period:/Período:, Resumo:, Estado:, etc.)
+  if (
+    line.startsWith("Sprint:") ||
+    line.startsWith("Period:") ||
+    line.startsWith("Período:") ||
+    line.startsWith("Summary:") ||
+    line.startsWith("Resumo:") ||
+    line.startsWith("State:") ||
+    line.startsWith("Estado:")
+  ) {
     return colors.dim(line);
   }
 

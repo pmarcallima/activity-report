@@ -3,6 +3,7 @@ import type { AzureWorkItem, CorrelationConfidence, CorrelationResult, GitCommit
 export function correlateCommitsToItems(commits: GitCommit[], workItems: AzureWorkItem[]): CorrelationResult {
   const workItemMap = new Map(workItems.map((item) => [item.id, item]));
   const stories = new Map<number, StoryAggregate>();
+  const standaloneItems = new Map<number, StoryAggregate>();
   const excludedCommits: CorrelationResult["excludedCommits"] = [];
 
   for (const commit of commits) {
@@ -14,13 +15,29 @@ export function correlateCommitsToItems(commits: GitCommit[], workItems: AzureWo
 
     const item = workItemMap.get(referenceId);
     if (!item) {
-      excludedCommits.push({ commit, reason: "item-not-found" });
+      const aggregate = standaloneItems.get(referenceId) ?? createStandaloneAggregate(referenceId, "Unknown");
+      aggregate.repos = unique([...aggregate.repos, commit.repoName]);
+      aggregate.referencedItemIds = unique([...aggregate.referencedItemIds, referenceId]);
+      aggregate.commits.push(commit);
+      aggregate.inferredMatchCount += 1;
+      standaloneItems.set(referenceId, aggregate);
       continue;
     }
 
     const resolution = resolveStory(item, workItemMap);
     if (!resolution) {
-      excludedCommits.push({ commit, reason: "task-without-parent-story" });
+      const aggregate = standaloneItems.get(item.id) ?? createStandaloneAggregateFromItem(item);
+      aggregate.repos = unique([...aggregate.repos, commit.repoName]);
+      aggregate.referencedItemIds = unique([...aggregate.referencedItemIds, item.id]);
+      if (item.type === "Task") {
+        aggregate.taskIds = unique([...aggregate.taskIds, item.id]);
+      }
+      aggregate.commits.push(commit);
+      aggregate.exactMatchCount += 1;
+      if (isHotfixCommit(commit)) {
+        aggregate.hotfixCommits.push(commit);
+      }
+      standaloneItems.set(item.id, aggregate);
       continue;
     }
 
@@ -52,6 +69,7 @@ export function correlateCommitsToItems(commits: GitCommit[], workItems: AzureWo
 
   return {
     includedStories: [...stories.values()].sort((left, right) => left.storyId - right.storyId),
+    standaloneWorkItems: [...standaloneItems.values()].sort((left, right) => left.storyId - right.storyId),
     excludedCommits
   };
 }
@@ -87,6 +105,41 @@ function createAggregate(story: AzureWorkItem): StoryAggregate {
     referencedItemIds: [story.id],
     exactMatchCount: 0,
     inferredMatchCount: 0
+  };
+}
+
+function createStandaloneAggregate(itemId: number, workItemType: string): StoryAggregate {
+  return {
+    storyId: itemId,
+    storyTitle: workItemType === "Unknown" ? "Work item not in sprint or not found" : "",
+    storyState: "—",
+    taskIds: [],
+    relatedWorkItemIds: [],
+    repos: [],
+    commits: [],
+    hotfixCommits: [],
+    referencedItemIds: [itemId],
+    exactMatchCount: 0,
+    inferredMatchCount: 0,
+    workItemType
+  };
+}
+
+function createStandaloneAggregateFromItem(item: AzureWorkItem): StoryAggregate {
+  return {
+    storyId: item.id,
+    storyTitle: item.title,
+    storyState: item.state,
+    iterationPath: item.iterationPath,
+    taskIds: item.type === "Task" ? [item.id] : [],
+    relatedWorkItemIds: [],
+    repos: [],
+    commits: [],
+    hotfixCommits: [],
+    referencedItemIds: [item.id],
+    exactMatchCount: 0,
+    inferredMatchCount: 0,
+    workItemType: item.type
   };
 }
 

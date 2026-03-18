@@ -24,6 +24,7 @@ import { getWorkItemDetails } from "../../infra/azure/get-work-item-details.js";
 import { collectCommits } from "../../infra/git/collect-commits.js";
 import { discoverRepos } from "../../infra/git/discover-repos.js";
 import { correlateCommitsToItems } from "../../domain/correlation/correlate-commits-to-items.js";
+import { getCliMessages } from "../../core/i18n.js";
 import { withSpinner, isTTY } from "../progress.js";
 import { selectSprintInteractive } from "../sprint-selector.js";
 
@@ -54,7 +55,7 @@ export async function generateCommand(options: GenerateOptions): Promise<void> {
 
   const result = await generateSingleSprintReport({ config, token, sprintSelection, options });
 
-  logger.info(`Report written to ${result.outputPath}`);
+  logger.info(getCliMessages(result.report.locale).reportWritten.replace("{path}", result.outputPath));
 }
 
 async function resolveSprintSelectionInteractive(options: GenerateOptions, config: AppConfig): Promise<SprintSelection> {
@@ -89,7 +90,8 @@ async function generateMultiSprintCommand({
   sprintNames: string[];
   options: GenerateOptions;
 }): Promise<void> {
-  const allIterations = await withSpinner("Fetching sprint details...", async () => {
+  const cliMsg = getCliMessages(config.locale ?? "en");
+  const allIterations = await withSpinner(cliMsg.fetchingSprintDetails, async () => {
     return getIterations(config, token);
   });
 
@@ -129,7 +131,7 @@ async function generateMultiSprintCommand({
   await mkdir(path.dirname(combinedPath), { recursive: true });
   await writeFile(combinedPath, renderMultiSprintMarkdown(combined), "utf8");
 
-  logger.info(`Combined report written to ${combinedPath}`);
+  logger.info(cliMsg.combinedReportWritten.replace("{path}", combinedPath));
 }
 
 async function generateLastSprintsCommand({
@@ -146,7 +148,8 @@ async function generateLastSprintsCommand({
     throw new Error("--last-sprints must be a positive integer.");
   }
 
-  const allIterations = await withSpinner("Resolving sprint history...", async () => {
+  const cliMsg = getCliMessages(config.locale ?? "en");
+  const allIterations = await withSpinner(cliMsg.resolvingSprintHistory, async () => {
     return getIterations(config, token);
   });
 
@@ -194,7 +197,7 @@ async function generateLastSprintsCommand({
   await mkdir(path.dirname(combinedPath), { recursive: true });
   await writeFile(combinedPath, renderMultiSprintMarkdown(combined), "utf8");
 
-  logger.info(`Combined report written to ${combinedPath}`);
+  logger.info(cliMsg.combinedReportWritten.replace("{path}", combinedPath));
 }
 
 async function generateSingleSprintReport({
@@ -209,7 +212,10 @@ async function generateSingleSprintReport({
   options: GenerateOptions;
 }): Promise<GeneratePipelineResult> {
 
-  const sprint = await withSpinner("Resolving sprint...", async () => {
+  const locale = config.locale ?? "en";
+  const cliMsg = getCliMessages(locale);
+
+  const sprint = await withSpinner(cliMsg.resolvingSprint, async () => {
     return resolveSprint(config, token, sprintSelection);
   });
 
@@ -220,19 +226,19 @@ async function generateSingleSprintReport({
     throw new Error("Could not determine report date range. Provide --from and --to or use a sprint with start/end dates.");
   }
 
-  const repos = await withSpinner("Discovering repositories...", async () => {
+  const repos = await withSpinner(cliMsg.discoveringRepos, async () => {
     return discoverRepos(config.repoRoots);
   });
 
-  logger.info(`Found ${repos.length} repositories`);
-  logger.info(`Collecting commits from ${repos.length} repositories...`);
+  logger.info(cliMsg.foundRepos.replace("{count}", String(repos.length)));
+  logger.info(cliMsg.collectingCommits.replace("{count}", String(repos.length)));
 
   const commitGroups = await Promise.all(repos.map((repo) => collectCommits({ repo, config, from, to })));
   const commits = commitGroups.flat();
 
-  logger.info(`Collected ${commits.length} commits`);
+  logger.info(cliMsg.collectedCommits.replace("{count}", String(commits.length)));
 
-  const workItemIds = await withSpinner("Loading Azure sprint work items...", async () => {
+  const workItemIds = await withSpinner(cliMsg.loadingWorkItems, async () => {
     return getSprintWorkItemIds(config, token, sprint);
   });
 
@@ -245,10 +251,9 @@ async function generateSingleSprintReport({
   ]);
   const workItems = mergeWorkItems([...sprintWorkItems, ...referencedWorkItems]);
 
-  const correlation = await withSpinner("Correlating commits to Azure work items...", async () => {
+  const correlation = await withSpinner(cliMsg.correlating, async () => {
     return correlateCommitsToItems(commits, workItems);
   });
-
   const report = buildReportModel({
     repos,
     commits,
@@ -256,10 +261,11 @@ async function generateSingleSprintReport({
     correlation,
     from,
     to,
-    includeUnlinkedTechnicalWork: config.report.includeUnlinkedTechnicalWork
+    includeUnlinkedTechnicalWork: config.report.includeUnlinkedTechnicalWork,
+    locale
   });
 
-  const markdown = await withSpinner("Building report...", async () => {
+  const markdown = await withSpinner(cliMsg.buildingReport, async () => {
     return renderMarkdown(report);
   });
 

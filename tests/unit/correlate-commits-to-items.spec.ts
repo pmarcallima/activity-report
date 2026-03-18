@@ -95,4 +95,81 @@ describe("correlateCommitsToItems", () => {
     expect(result.includedStories[0]?.storyId).toBe(100);
     expect(result.includedStories[0]?.inferredMatchCount).toBe(1);
   });
+
+  it("puts task without parent story in standaloneWorkItems as the task itself", () => {
+    const commits: GitCommit[] = [
+      {
+        repoName: "repo-a",
+        repoPath: "C:/repo-a",
+        hash: "abc",
+        shortHash: "abc",
+        authorName: "Test",
+        authorEmail: "test@example.com",
+        authoredAt: "2026-03-13T10:00:00Z",
+        message: "Work on task",
+        branchReference: { raw: "feature/200_foo", type: "feature", itemId: 200 }
+      }
+    ];
+    const workItems: AzureWorkItem[] = [
+      { id: 200, title: "Orphan task", type: "Task", state: "Active", childIds: [], relatedIds: [] }
+    ];
+
+    const result = correlateCommitsToItems(commits, workItems);
+
+    expect(result.includedStories).toHaveLength(0);
+    expect(result.standaloneWorkItems).toHaveLength(1);
+    expect(result.standaloneWorkItems[0]?.storyId).toBe(200);
+    expect(result.standaloneWorkItems[0]?.storyTitle).toBe("Orphan task");
+    expect(result.standaloneWorkItems[0]?.workItemType).toBe("Task");
+    expect(result.standaloneWorkItems[0]?.commits).toHaveLength(1);
+    expect(result.excludedCommits).toHaveLength(0);
+  });
+
+  it("puts referenced item not found in Azure in standaloneWorkItems", () => {
+    const commits: GitCommit[] = [
+      {
+        repoName: "repo-a",
+        repoPath: "C:/repo-a",
+        hash: "xyz",
+        shortHash: "xyz",
+        authorName: "Test",
+        authorEmail: "test@example.com",
+        authoredAt: "2026-03-13T10:00:00Z",
+        message: "AB#99999 - Some work",
+        messageItemId: 99999
+      }
+    ];
+    const workItems: AzureWorkItem[] = [];
+
+    const result = correlateCommitsToItems(commits, workItems);
+
+    expect(result.includedStories).toHaveLength(0);
+    expect(result.standaloneWorkItems).toHaveLength(1);
+    expect(result.standaloneWorkItems[0]?.storyId).toBe(99999);
+    expect(result.standaloneWorkItems[0]?.storyTitle).toBe("Work item not in sprint or not found");
+    expect(result.standaloneWorkItems[0]?.workItemType).toBe("Unknown");
+    expect(result.standaloneWorkItems[0]?.commits).toHaveLength(1);
+    expect(result.excludedCommits).toHaveLength(0);
+  });
+
+  it("excludes only commits with no branch and no message reference", () => {
+    const commits: GitCommit[] = [
+      {
+        repoName: "repo-a",
+        repoPath: "C:/repo-a",
+        hash: "noref",
+        shortHash: "noref",
+        authorName: "Test",
+        authorEmail: "test@example.com",
+        authoredAt: "2026-03-13T10:00:00Z",
+        message: "Minor fix with no AB# or branch"
+      }
+    ];
+    const result = correlateCommitsToItems(commits, []);
+
+    expect(result.includedStories).toHaveLength(0);
+    expect(result.standaloneWorkItems).toHaveLength(0);
+    expect(result.excludedCommits).toHaveLength(1);
+    expect(result.excludedCommits[0]?.reason).toBe("no-branch-reference");
+  });
 });

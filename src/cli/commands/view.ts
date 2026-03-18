@@ -1,6 +1,7 @@
 import { select } from "@inquirer/prompts";
 
 import { logger } from "../../core/logger.js";
+import { getCliMessages } from "../../core/i18n.js";
 import { loadConfig } from "../../config/load-config.js";
 import { scanReports, findReportByName, type ReportMeta } from "../viewer/scan-reports.js";
 import { displayReport, formatReportList } from "../viewer/display-report.js";
@@ -15,8 +16,9 @@ export async function viewCommand(options: ViewOptions): Promise<void> {
 
   const reports = await scanReports(config.outputDir);
 
+  const t = getCliMessages(config.locale ?? "en");
   if (reports.length === 0) {
-    logger.error("No reports found. Generate a report first with 'activity-report generate'.");
+    logger.error(t.noReportsFound);
     process.exitCode = 1;
     return;
   }
@@ -25,8 +27,8 @@ export async function viewCommand(options: ViewOptions): Promise<void> {
   if (options.name) {
     const report = findReportByName(reports, options.name);
     if (!report) {
-      logger.error(`Report '${options.name}' not found.`);
-      logger.info("Available reports:");
+      logger.error(t.reportNotFound.replace("{name}", options.name));
+      logger.info(t.availableReports);
       console.log(formatReportList(reports));
       process.exitCode = 1;
       return;
@@ -43,17 +45,21 @@ export async function viewCommand(options: ViewOptions): Promise<void> {
   }
 
   // Interactive selection
-  await selectAndDisplayReport(reports);
+  await selectAndDisplayReport(reports, config);
 }
 
-async function selectAndDisplayReport(reports: ReportMeta[]): Promise<void> {
+async function selectAndDisplayReport(
+  reports: ReportMeta[],
+  config: { locale?: "pt-BR" | "en" }
+): Promise<void> {
   const choices = reports.map((report) => ({
     name: `${report.sprintName} (${report.period}) - ${report.commitCount} commits`,
     value: report.path
   }));
 
+  const t = getCliMessages(config.locale ?? "en");
   const selected = await select({
-    message: "Select a report to view:",
+    message: t.selectReport,
     choices
   });
 

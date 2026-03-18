@@ -24,8 +24,10 @@ export async function collectCommits({ repo, config, from, to }: CollectCommitsP
     `--pretty=format:${prettyFormat}`
   ];
 
-  if (config.git?.authorEmail) {
-    args.push(`--author=${config.git.authorEmail}`);
+  const authorEmails =
+    config.git?.authorEmails?.length ? config.git.authorEmails : config.git?.authorEmail ? [config.git.authorEmail] : [];
+  for (const email of authorEmails) {
+    args.push(`--author=${email}`);
   }
 
   const { stdout } = await execFileAsync("git", args, { cwd: repo.path, maxBuffer: 10 * 1024 * 1024 });
